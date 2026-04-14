@@ -1,0 +1,13 @@
+{
+  "name": "Martin · Tracker",
+  "short_name": "Tracker",
+  "description": "Cut hacia julio — nutrición + gym",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#171717",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

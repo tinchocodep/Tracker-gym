@@ -128,8 +128,6 @@ function NutritionTab() {
 
   const weightE = entries.filter(e => e.weight != null);
   const latest = weightE.length ? weightE[weightE.length - 1].weight : TARGETS.startWeight;
-  const first = weightE.length ? weightE[0].weight : TARGETS.startWeight;
-  const lost = (first - latest).toFixed(1);
   const toGo = (latest - TARGETS.goalWeight).toFixed(1);
   const daysLeft = Math.ceil((TARGETS.deadline - new Date()) / (1000 * 60 * 60 * 24));
   const last7 = entries.slice(-7);
@@ -137,20 +135,46 @@ function NutritionTab() {
   const avgP = last7.filter(e => e.protein).length ? Math.round(last7.filter(e => e.protein).reduce((s, e) => s + e.protein, 0) / last7.filter(e => e.protein).length) : null;
   const chartData = weightE.map(e => ({ date: e.date.slice(5), weight: e.weight }));
 
+  const recent = weightE.slice(-14);
+  let pace = null, projection = null;
+  if (recent.length >= 2) {
+    const a = recent[0], b = recent[recent.length - 1];
+    const days = Math.max(1, (new Date(b.date) - new Date(a.date)) / (1000 * 60 * 60 * 24));
+    pace = ((a.weight - b.weight) / days) * 7;
+    projection = (latest - (pace * (daysLeft / 7))).toFixed(1);
+  }
+
+  let streak = 0;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const e = entries[i];
+    if (e.kcal != null && e.protein != null && e.kcal <= TARGETS.kcal && e.protein >= TARGETS.protein) streak++;
+    else break;
+  }
+
   if (loading) return <p className="text-sm text-neutral-400">Cargando...</p>;
 
   return (
     <>
-      <section className="grid grid-cols-4 gap-6 mb-12 text-sm">
-        <Metric label="Perdido" value={lost} unit="kg" />
+      <section className="grid grid-cols-4 gap-6 mb-4 text-sm">
         <Metric label="Faltan" value={toGo} unit="kg" />
+        <Metric label="Ritmo" value={pace != null ? pace.toFixed(2) : "—"} unit={pace != null ? "kg/sem" : ""} />
         <Metric label="kcal 7d" value={avgK ?? "—"} sub="/ 2400" />
         <Metric label="prot 7d" value={avgP ?? "—"} sub="/ 200g" />
       </section>
 
+      {projection != null && (
+        <p className="text-xs text-neutral-400 mb-12">
+          Proyección 1 jul: <span className="text-neutral-700">{projection} kg</span>
+          {parseFloat(projection) <= TARGETS.goalWeight ? " ✓ en ritmo" : " · falta ajustar"}
+        </p>
+      )}
+
       <section className="mb-12">
         <div className="flex items-baseline justify-between mb-6">
-          <h2 className="text-sm font-medium">Hoy</h2>
+          <div className="flex items-baseline gap-3">
+            <h2 className="text-sm font-medium">Hoy</h2>
+            {streak > 0 && <span className="text-xs text-neutral-500">🔥 {streak}d</span>}
+          </div>
           <input type="date" value={today} onChange={(e) => changeDate(e.target.value)} className="text-sm text-neutral-500 bg-transparent outline-none" />
         </div>
         <div className="space-y-4">
@@ -315,6 +339,20 @@ function ActiveSession({ session, previousSessions, onSave, onCancel }) {
     return null;
   }
 
+  function getPRFor(exId) {
+    let pr = null;
+    for (const s of previousSessions) {
+      const ex = (s.exercises || []).find(e => e.id === exId);
+      if (!ex || !ex.sets) continue;
+      for (const set of ex.sets) {
+        if (set.weight != null && (pr == null || set.weight > pr.weight)) {
+          pr = { weight: set.weight, reps: set.reps, date: s.date };
+        }
+      }
+    }
+    return pr;
+  }
+
   function handleSave() {
     if (!exercises.some(e => e.sets.length > 0)) return;
     onSave({ date: session.date, sessionKey: session.sessionKey, exercises });
@@ -336,14 +374,15 @@ function ActiveSession({ session, previousSessions, onSave, onCancel }) {
         {exercises.map((ex, idx) => {
           const defEx = def.exercises.find(e => e.id === ex.id);
           const last = getLastFor(ex.id);
-          return <ExerciseBlock key={ex.id} exercise={ex} def={defEx} last={last} onAdd={(s) => addSet(idx, s)} onRemove={(i) => removeSet(idx, i)} />;
+          const pr = getPRFor(ex.id);
+          return <ExerciseBlock key={ex.id} exercise={ex} def={defEx} last={last} pr={pr} onAdd={(s) => addSet(idx, s)} onRemove={(i) => removeSet(idx, i)} />;
         })}
       </div>
     </>
   );
 }
 
-function ExerciseBlock({ exercise, def, last, onAdd, onRemove }) {
+function ExerciseBlock({ exercise, def, last, pr, onAdd, onRemove }) {
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("");
   const [modality, setModality] = useState("Máquina");
@@ -369,6 +408,12 @@ function ExerciseBlock({ exercise, def, last, onAdd, onRemove }) {
         <h3 className="text-sm font-medium">{exercise.name}</h3>
         <span className="text-xs text-neutral-400">{def.sets} × {def.reps}</span>
       </div>
+      {pr && (
+        <p className="text-xs text-neutral-500 mb-1">
+          PR <span className="text-neutral-900 font-medium">{pr.weight}kg</span>
+          <span className="text-neutral-400"> × {pr.reps} · {pr.date.slice(5)}</span>
+        </p>
+      )}
       {last && (
         <p className="text-xs text-neutral-400 mb-3">
           {last.date.slice(5)} ·{" "}
