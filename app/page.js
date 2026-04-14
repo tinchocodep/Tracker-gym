@@ -88,6 +88,7 @@ function NutritionTab() {
   const [kcal, setKcal] = useState("");
   const [protein, setProtein] = useState("");
   const [trained, setTrained] = useState(false);
+  const [sessionKey, setSessionKey] = useState(null);
   const [notes, setNotes] = useState("");
 
   useEffect(() => { load(); }, []);
@@ -104,12 +105,16 @@ function NutritionTab() {
 
   function fill(e) {
     setWeight(e.weight ?? ""); setKcal(e.kcal ?? ""); setProtein(e.protein ?? "");
-    setTrained(e.trained ?? false); setNotes(e.notes ?? "");
+    setTrained(e.trained ?? false); setSessionKey(e.session_key ?? null); setNotes(e.notes ?? "");
+  }
+
+  function reset() {
+    setWeight(""); setKcal(""); setProtein(""); setTrained(false); setSessionKey(null); setNotes("");
   }
 
   async function save() {
     if (!weight && !kcal && !protein) return;
-    const entry = { date: today, weight: weight ? parseFloat(weight) : null, kcal: kcal ? parseInt(kcal) : null, protein: protein ? parseInt(protein) : null, trained, notes };
+    const entry = { date: today, weight: weight ? parseFloat(weight) : null, kcal: kcal ? parseInt(kcal) : null, protein: protein ? parseInt(protein) : null, trained, session_key: sessionKey, notes };
     await supabase.from("nutrition_logs").upsert(entry, { onConflict: "date" });
     await load();
   }
@@ -117,13 +122,19 @@ function NutritionTab() {
   async function del(date) {
     await supabase.from("nutrition_logs").delete().eq("date", date);
     setEntries(entries.filter(e => e.date !== date));
-    if (date === today) { setWeight(""); setKcal(""); setProtein(""); setTrained(false); setNotes(""); }
+    if (date === today) reset();
   }
 
   function changeDate(d) {
     setToday(d);
     const e = entries.find(x => x.date === d);
-    if (e) fill(e); else { setWeight(""); setKcal(""); setProtein(""); setTrained(false); setNotes(""); }
+    if (e) fill(e); else reset();
+  }
+
+  function pickSession(key) {
+    if (key === null) { setTrained(false); setSessionKey(null); }
+    else if (key === "otro") { setTrained(true); setSessionKey(null); }
+    else { setTrained(true); setSessionKey(key); }
   }
 
   const weightE = entries.filter(e => e.weight != null);
@@ -181,11 +192,27 @@ function NutritionTab() {
           <Row label="Peso" value={weight} onChange={setWeight} unit="kg" step="0.1" />
           <Row label="Calorías" value={kcal} onChange={setKcal} unit="kcal" />
           <Row label="Proteína" value={protein} onChange={setProtein} unit="g" />
-          <div className="flex items-center justify-between py-3 border-b border-neutral-100">
-            <span className="text-sm text-neutral-600">Entrené</span>
-            <button onClick={() => setTrained(!trained)} className={`w-10 h-6 rounded-full transition ${trained ? "bg-neutral-900" : "bg-neutral-200"}`}>
-              <span className={`block w-4 h-4 bg-white rounded-full transition transform ${trained ? "translate-x-5" : "translate-x-1"}`} />
-            </button>
+          <div className="py-3 border-b border-neutral-100">
+            <div className="text-sm text-neutral-600 mb-2">Entrené</div>
+            <div className="flex flex-wrap gap-1.5 text-xs">
+              {(() => {
+                const current = !trained ? null : (sessionKey ?? "otro");
+                const opts = [
+                  { k: null, label: "No" },
+                  ...Object.entries(SESSIONS).map(([k, s]) => ({ k, label: s.name })),
+                  { k: "otro", label: "Otro" },
+                ];
+                return opts.map(o => (
+                  <button
+                    key={o.k ?? "none"}
+                    onClick={() => pickSession(o.k)}
+                    className={`px-2.5 py-1 rounded transition ${current === o.k ? "bg-neutral-900 text-white" : "text-neutral-500 hover:text-neutral-900"}`}
+                  >
+                    {o.label}
+                  </button>
+                ));
+              })()}
+            </div>
           </div>
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas" className="w-full text-sm text-neutral-700 placeholder-neutral-400 bg-transparent outline-none resize-none pt-2" rows="2" />
         </div>
@@ -221,7 +248,11 @@ function NutritionTab() {
                     {e.weight && <span>{e.weight}kg</span>}
                     {e.kcal && <span className="text-neutral-500">{e.kcal}</span>}
                     {e.protein && <span className="text-neutral-500">{e.protein}g</span>}
-                    {e.trained && <span className="text-neutral-900">●</span>}
+                    {e.trained && (
+                      <span className="text-neutral-900 text-xs">
+                        {e.session_key ? SESSIONS[e.session_key]?.name : "●"}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <button onClick={() => del(e.date)} className="text-neutral-300 hover:text-neutral-700 opacity-0 group-hover:opacity-100 transition text-xs">borrar</button>
